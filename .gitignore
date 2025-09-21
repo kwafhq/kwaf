@@ -1,0 +1,14 @@
+/.idea
+!/vendor/vendor.json
+!/config.yml
+.env
+profile.cov
+/tmp
+air.log
+*.env
+__debug*
+.fleet
+bin/
+# Development certificates (auto-generated)
+certs/dev/
+old/
