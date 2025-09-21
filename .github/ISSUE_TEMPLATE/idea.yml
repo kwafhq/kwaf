@@ -1,0 +1,66 @@
+name: 💡 Idea / Proposal
+description: Share a new idea, improvement, or proposal for discussion
+title: "[Idea] "
+labels: ["idea", "discussion"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 💡 Idea / Proposal
+        Thanks for sharing your idea! Please provide as much detail as possible to help us understand it.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: A short title describing your idea.
+      placeholder: e.g., Add AI-assisted suggestions for rules
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why do you think this idea is important or useful?
+      placeholder: Explain the background or problem this idea addresses
+    validations:
+      required: true
+
+  - type: textarea
+    id: concept
+    attributes:
+      label: Concept
+      description: Describe the concept of the idea in detail.
+      placeholder: How would it look or work?
+    validations:
+      required: false
+
+  - type: textarea
+    id: potential-benefits
+    attributes:
+      label: Potential Benefits
+      description: What are the positive impacts of this idea?
+      placeholder: e.g., Improves UX, reduces cost, adds flexibility
+    validations:
+      required: false
+
+  - type: textarea
+    id: challenges
+    attributes:
+      label: Possible Challenges
+      description: What are the possible downsides or challenges?
+      placeholder: e.g., Needs more resources, may be complex to implement
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any references, links, or visuals that might help.
+      placeholder: Related links, mockups, diagrams
+    validations:
+      required: false
