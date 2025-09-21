@@ -21,7 +21,7 @@
 SHELL := bash
 
 # ----- Configurable defaults -----
-BASE ?= main        # base branch for PRs
+BASE ?= master        # base branch for PRs
 DRAFT ?= 0          # 1 = create PR as draft
 LABEL ?= in-progress
 # ---------------------------------
@@ -60,14 +60,31 @@ _need_msg:
 .PHONY: git-start git-commit git-push git-pr git-ready git-merge git-assign git-label git-status
 
 git-start: _git_check_tools _git_check_repo _need_issue
-	@git fetch -q
-	@git checkout $(BASE)
-	@git pull --ff-only
-	@BRANCH="$$( $(BRANCH_CMD) )"; \
-	  echo "⏳ Creating branch from issue #$(ISSUE): $$BRANCH"; \
-	  gh issue develop $(ISSUE) --name $$BRANCH; \
-	  git push -u origin $$BRANCH; \
-	  echo "✅ Linked & pushed: $$BRANCH"
+	@set -euo pipefail; \
+	# detect default base branch (main/master) with fallback to $(BASE)
+	DETECTED_BASE="$$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@' || true)"; \
+	BASE_BRANCH="$${DETECTED_BASE:-$(BASE)}"; \
+	echo "→ Base branch: $$BASE_BRANCH"; \
+	git fetch -q origin; \
+	git checkout "$$BASE_BRANCH"; \
+	git pull --ff-only; \
+	BRANCH="$$( $(BRANCH_CMD) )"; \
+	echo "→ Working branch: $$BRANCH"; \
+	# create or checkout local branch
+	if git show-ref --quiet --heads "$$BRANCH"; then \
+	  git checkout "$$BRANCH"; \
+	else \
+	  git checkout -b "$$BRANCH" "$$BASE_BRANCH"; \
+	fi; \
+	# link branch to issue (best-effort)
+	if gh issue develop $(ISSUE) --name "$$BRANCH"; then \
+	  echo "✓ linked branch to issue #$(ISSUE)"; \
+	else \
+	  echo "(i) linking via gh failed/skipped; continuing"; \
+	fi; \
+	# ensure upstream set (no-op if already exists)
+	git push -u origin "$$BRANCH" || echo "(i) upstream already set or remote exists"
+	echo "✅ Ready on branch: $$BRANCH"
 
 git-commit: _git_check_tools _git_check_repo _need_issue _need_msg
 	@git add -A
