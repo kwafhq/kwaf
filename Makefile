@@ -1,127 +1,190 @@
-# -------------------------------
-# Reusable Makefile (Git namespace)
-# -------------------------------
-# Usage examples:
-#   make git-start ISSUE=12                     # create & link a branch from an issue
-#   make git-start ISSUE=12 NAME=feature/login  # custom branch name
-#   make git-commit ISSUE=12 MSG="fix login bug"
-#   make git-push
-#   make git-pr ISSUE=12                        # open PR with "Closes #12"
-#   make git-pr ISSUE=12 DRAFT=1                # open PR as Draft
-#   make git-ready                              # mark PR "Ready for review"
-#   make git-merge                              # squash-merge + delete branch (auto when checks pass)
-#   make git-assign ISSUE=12                    # assign issue to yourself
-#   make git-label ISSUE=12 LABEL=in-progress   # add label to issue
-#   make git-status                             # show PR status for current branch
-#
-# Notes:
-# - Requires GitHub CLI: https://cli.github.com/  (run `gh auth login` once)
-# - `gh issue develop <num>` automatically links the branch to the issue (Development section)
+# KWAF Makefile
+# Web Application Firewall for Kubernetes
 
-SHELL := bash
+# Variables
+GO_VERSION := $(shell go version | cut -d ' ' -f 3)
+MODULE_NAME := kwaf.io/kwaf
+BINARY_DIR := bin
+CMD_DIR := cmd
 
-# ----- Configurable defaults -----
-BASE ?= master        # base branch for PRs
-DRAFT ?= 0          # 1 = create PR as draft
-LABEL ?= in-progress
-# ---------------------------------
+# Binary names and paths
+KWAF_CP_BINARY := $(BINARY_DIR)/kwafcp
+KWAF_DP_BINARY := $(BINARY_DIR)/kwafd
+KWAF_CTL_BINARY := $(BINARY_DIR)/kwafctl
 
-# Build a slug from issue title if NAME is not provided
-define BRANCH_FROM_ISSUE
-gh issue view $(ISSUE) --json title,number \
-  --jq '(.title | ascii_downcase | gsub("[^a-z0-9]+"; "-") | gsub("(^-|-$)"; "")) + "-" + (.number|tostring)'
-endef
+# Source paths
+KWAF_CP_SRC := $(CMD_DIR)/kwaf-controlplane
+KWAF_DP_SRC := $(CMD_DIR)/kwafd
+KWAF_CTL_SRC := $(CMD_DIR)/kwaf-ctl
 
-ifeq ($(strip $(NAME)),)
-BRANCH_CMD := $(BRANCH_FROM_ISSUE)
-else
-BRANCH_CMD := echo $(NAME)
-endif
+# Build flags
+BUILD_FLAGS := -ldflags="-s -w"
+BUILD_FLAGS += -ldflags="-X main.version=$(shell git describe --tags --always --dirty)"
+BUILD_FLAGS += -ldflags="-X main.commit=$(shell git rev-parse --short HEAD)"
+BUILD_FLAGS += -ldflags="-X main.date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# ----- Internal guards -----
-.PHONY: _git_check_tools _git_check_repo _need_issue _need_msg
-_git_check_tools:
-	@command -v gh >/dev/null || { echo "❌ gh CLI not found. Install: https://cli.github.com/"; exit 1; }
-	@command -v git >/dev/null || { echo "❌ git not found."; exit 1; }
+# Colors for output
+RED := \033[31m
+GREEN := \033[32m
+YELLOW := \033[33m
+BLUE := \033[34m
+RESET := \033[0m
 
-_git_check_repo:
-	@git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "❌ Not a git repository."; exit 1; }
+.PHONY: help
+help: ## Display this help message
+	@echo "$(BLUE)KWAF - Kubernetes Web Application Firewall$(RESET)"
+	@echo "$(BLUE)========================================$(RESET)"
+	@echo ""
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "$(YELLOW)%-15s$(RESET) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-_need_issue:
-	@test -n "$(ISSUE)" || { echo "❌ ISSUE is required. e.g., ISSUE=12"; exit 1; }
+.PHONY: clean
+clean: ## Clean build artifacts
+	@echo "$(YELLOW)Cleaning build artifacts...$(RESET)"
+	@rm -rf $(BINARY_DIR)
+	@rm -f coverage.out
+	@echo "$(GREEN)✓ Clean completed$(RESET)"
 
-_need_msg:
-	@test -n "$(MSG)" || { echo "❌ MSG is required. e.g., MSG=\"fix login bug\""; exit 1; }
+.PHONY: prepare
+prepare: ## Create necessary directories
+	@mkdir -p $(BINARY_DIR)
 
-# =============================
-# Git / GitHub namespace targets
-# =============================
+# Build targets
+.PHONY: build
+build: prepare build-cp build-dp build-ctl ## Build all binaries
+	@echo "$(GREEN)✓ All binaries built successfully$(RESET)"
+	@echo "$(BLUE)Binaries available in $(BINARY_DIR)/:$(RESET)"
+	@ls -la $(BINARY_DIR)/
 
-.PHONY: git-start git-commit git-push git-pr git-ready git-merge git-assign git-label git-status
+.PHONY: build-cp
+build-cp: prepare ## Build control plane binary (kwafcp)
+	@echo "$(YELLOW)Building control plane (kwafcp)...$(RESET)"
+	@CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $(KWAF_CP_BINARY) ./$(KWAF_CP_SRC)
+	@echo "$(GREEN)✓ Control plane built: $(KWAF_CP_BINARY)$(RESET)"
 
-git-start: _git_check_tools _git_check_repo _need_issue
-	@set -euo pipefail; \
-	# detect default base branch (main/master) with fallback to $(BASE)
-	DETECTED_BASE="$$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@' || true)"; \
-	BASE_BRANCH="$${DETECTED_BASE:-$(BASE)}"; \
-	echo "→ Base branch: $$BASE_BRANCH"; \
-	git fetch -q origin; \
-	git checkout "$$BASE_BRANCH"; \
-	git pull --ff-only; \
-	BRANCH="$$( $(BRANCH_CMD) )"; \
-	echo "→ Working branch: $$BRANCH"; \
-	# create or checkout local branch
-	if git show-ref --quiet --heads "$$BRANCH"; then \
-	  git checkout "$$BRANCH"; \
+.PHONY: build-dp
+build-dp: prepare ## Build data plane binary (kwafd)
+	@echo "$(YELLOW)Building data plane (kwafd)...$(RESET)"
+	@CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $(KWAF_DP_BINARY) ./$(KWAF_DP_SRC)
+	@echo "$(GREEN)✓ Data plane built: $(KWAF_DP_BINARY)$(RESET)"
+
+.PHONY: build-ctl
+build-ctl: prepare ## Build CLI tool (kwafctl)
+	@echo "$(YELLOW)Building CLI tool (kwafctl)...$(RESET)"
+	@CGO_ENABLED=0 go build $(BUILD_FLAGS) -o $(KWAF_CTL_BINARY) ./$(KWAF_CTL_SRC)
+	@echo "$(GREEN)✓ CLI tool built: $(KWAF_CTL_BINARY)$(RESET)"
+
+# Test targets
+.PHONY: test
+test: ## Run all tests
+	@echo "$(YELLOW)Running tests...$(RESET)"
+	@go test -v -race -coverprofile=coverage.out ./...
+	@echo "$(GREEN)✓ Tests completed$(RESET)"
+
+.PHONY: test-coverage
+test-coverage: test ## Run tests with coverage report
+	@echo "$(YELLOW)Generating coverage report...$(RESET)"
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "$(GREEN)✓ Coverage report generated: coverage.html$(RESET)"
+
+.PHONY: test-short
+test-short: ## Run short tests only
+	@echo "$(YELLOW)Running short tests...$(RESET)"
+	@go test -short ./...
+	@echo "$(GREEN)✓ Short tests completed$(RESET)"
+
+# Lint and format targets
+.PHONY: lint
+lint: ## Run golangci-lint
+	@echo "$(YELLOW)Running golangci-lint...$(RESET)"
+	@if ! command -v golangci-lint &> /dev/null; then \
+		echo "$(RED)golangci-lint is not installed. Installing...$(RESET)"; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	fi
+	@golangci-lint run --config golangci.yml
+	@echo "$(GREEN)✓ Linting completed$(RESET)"
+
+.PHONY: format
+format: ## Format code with gofmt and goimports
+	@echo "$(YELLOW)Formatting code...$(RESET)"
+	@go fmt ./...
+	@if command -v goimports &> /dev/null; then \
+		goimports -w .; \
 	else \
-	  git checkout -b "$$BRANCH" "$$BASE_BRANCH"; \
-	fi; \
-	# link branch to issue (best-effort)
-	if gh issue develop $(ISSUE) --name "$$BRANCH"; then \
-	  echo "✓ linked branch to issue #$(ISSUE)"; \
-	else \
-	  echo "(i) linking via gh failed/skipped; continuing"; \
-	fi; \
-	# ensure upstream set (no-op if already exists)
-	git push -u origin "$$BRANCH" || echo "(i) upstream already set or remote exists"
-	echo "✅ Ready on branch: $$BRANCH"
+		echo "$(YELLOW)goimports not found, installing...$(RESET)"; \
+		go install golang.org/x/tools/cmd/goimports@latest; \
+		$(shell go env GOPATH)/bin/goimports -w .; \
+	fi
+	@echo "$(GREEN)✓ Code formatting completed$(RESET)"
 
-git-commit: _git_check_tools _git_check_repo _need_issue _need_msg
-	@git add -A
-	@git commit -m "$(MSG) (#$(ISSUE))"
-	@echo "✅ Commit created with Issue reference: #$(ISSUE)"
+# Run targets
+.PHONY: run-cp
+run-cp: build-cp ## Run control plane
+	@echo "$(YELLOW)Starting control plane...$(RESET)"
+	@echo "$(BLUE)Press Ctrl+C to stop$(RESET)"
+	@./$(KWAF_CP_BINARY)
 
-git-push: _git_check_tools _git_check_repo
-	@git push
-	@echo "✅ Pushed"
+.PHONY: run-dp
+run-dp: build-dp ## Run data plane
+	@echo "$(YELLOW)Starting data plane...$(RESET)"
+	@echo "$(BLUE)Press Ctrl+C to stop$(RESET)"
+	@./$(KWAF_DP_BINARY)
 
-git-pr: _git_check_tools _git_check_repo _need_issue
-	@CUR_BRANCH="$$(git rev-parse --abbrev-ref HEAD)"; \
-	  TITLE="[#$(ISSUE)] $$(gh issue view $(ISSUE) --json title --jq .title)"; \
-	  BODY="Closes #$(ISSUE)"; \
-	  EXTRA=""; \
-	  if [ "$(DRAFT)" = "1" ]; then EXTRA="--draft"; fi; \
-	  echo "⏳ Creating PR: $$CUR_BRANCH -> $(BASE)"; \
-	  gh pr create --base $(BASE) --head $$CUR_BRANCH --title "$$TITLE" --body "$$BODY" $$EXTRA; \
-	  echo "✅ PR created. $$BODY"
+# Docker targets
+.PHONY: docker-build
+docker-build: docker-build-cp docker-build-dp docker-build-ctl ## Build all Docker images
 
-git-ready: _git_check_tools _git_check_repo
-	@gh pr ready
-	@echo "✅ PR marked Ready for review"
+.PHONY: docker-build-cp
+docker-build-cp: ## Build control plane Docker image
+	@echo "$(YELLOW)Building control plane Docker image...$(RESET)"
+	@docker build -f deployments/docker/Dockerfile.controlplane -t kwaf/controlplane:latest .
+	@echo "$(GREEN)✓ Control plane image built: kwaf/controlplane:latest$(RESET)"
 
-git-merge: _git_check_tools _git_check_repo
-	@gh pr merge --squash --delete-branch --auto
-	@echo "✅ PR set to auto-merge (squash) and branch will be deleted after checks"
+.PHONY: docker-build-dp
+docker-build-dp: ## Build data plane Docker image
+	@echo "$(YELLOW)Building data plane Docker image...$(RESET)"
+	@docker build -f deployments/docker/Dockerfile.dataplane -t kwaf/dataplane:latest .
+	@echo "$(GREEN)✓ Data plane image built: kwaf/dataplane:latest$(RESET)"
 
-git-assign: _git_check_tools _git_check_repo _need_issue
-	@gh issue edit $(ISSUE) --add-assignee @me
-	@echo "✅ Issue #$(ISSUE) assigned to you"
+.PHONY: docker-build-ctl
+docker-build-ctl: ## Build CLI Docker image
+	@echo "$(YELLOW)Building CLI Docker image...$(RESET)"
+	@docker build -f deployments/docker/Dockerfile.cli -t kwaf/cli:latest .
+	@echo "$(GREEN)✓ CLI image built: kwaf/cli:latest$(RESET)"
 
-git-label: _git_check_tools _git_check_repo _need_issue
-	@gh issue edit $(ISSUE) --add-label $(LABEL)
-	@echo "✅ Label '$(LABEL)' added to Issue #$(ISSUE)"
+# Development targets
+.PHONY: dev
+dev: ## Setup development environment
+	@echo "$(YELLOW)Setting up development environment...$(RESET)"
+	@go mod download
+	@go mod tidy
+	@echo "$(GREEN)✓ Development environment ready$(RESET)"
 
-git-status: _git_check_tools _git_check_repo
-	@echo "🔎 Current branch:" $$(git rev-parse --abbrev-ref HEAD)
-	-@gh pr view --web >/dev/null 2>&1 || true
-	@gh pr status || true
+.PHONY: deps
+deps: ## Install development dependencies
+	@echo "$(YELLOW)Installing development dependencies...$(RESET)"
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install golang.org/x/tools/cmd/goimports@latest
+	@echo "$(GREEN)✓ Development dependencies installed$(RESET)"
+
+# Utility targets
+.PHONY: mod-tidy
+mod-tidy: ## Tidy go modules
+	@echo "$(YELLOW)Tidying go modules...$(RESET)"
+	@go mod tidy
+	@echo "$(GREEN)✓ Modules tidied$(RESET)"
+
+.PHONY: mod-verify
+mod-verify: ## Verify go modules
+	@echo "$(YELLOW)Verifying go modules...$(RESET)"
+	@go mod verify
+	@echo "$(GREEN)✓ Modules verified$(RESET)"
+
+.PHONY: version
+version: ## Show version information
+	@echo "$(BLUE)Go Version:$(RESET) $(GO_VERSION)"
+	@echo "$(BLUE)Module:$(RESET) $(MODULE_NAME)"
+	@echo "$(BLUE)Git Commit:$(RESET) $(shell git rev-parse --short HEAD)"
+	@echo "$(BLUE)Git Tag:$(RESET) $(shell git describe --tags --always)"
+
+# Default target
+.DEFAULT_GOAL := help

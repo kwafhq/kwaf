@@ -92,6 +92,7 @@ make test
 make docker-build
 ```
 
+
 ## 🛠️ Components
 
 ### KWAF Control Plane (`kwafcp`)
@@ -211,25 +212,9 @@ upstream:
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### Development Setup
+### Development
 
-```bash
-# Clone repository
-git clone https://github.com/kwaf-project/kwaf.git
-cd kwaf
-
-# Install dependencies
-make deps
-
-# Run development environment
-make dev
-
-# Run tests
-make test
-
-# Run linting
-make lint
-```
+For development setup, building from source, and contribution guidelines, see our [Contributing Guide](CONTRIBUTING.md).
 
 ## 🐛 Issues and Support
 

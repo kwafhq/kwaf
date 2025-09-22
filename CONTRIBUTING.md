@@ -46,15 +46,76 @@ Before contributing, ensure you have:
    make dev
    ```
 
-4. **Run Tests**
+4. **Build All Components**
+   ```bash
+   make build
+   ```
+
+5. **Run Tests**
    ```bash
    make test
    ```
 
-5. **Access Development Services**
+6. **Access Development Services**
    - Control Plane: `http://localhost:8090`
    - Data Plane: `http://localhost:8080`
    - Admin Panel: `http://localhost:3000`
+
+### 🛠️ Development Commands
+
+The project includes a comprehensive Makefile with all necessary development targets:
+
+#### Build Commands
+- `make build` - Build all three binaries (kwafcp, kwafd, kwafctl)
+- `make build-cp` - Build control plane binary only
+- `make build-dp` - Build data plane binary only  
+- `make build-ctl` - Build CLI tool binary only
+
+#### Test Commands
+- `make test` - Run all tests with race detection and coverage
+- `make test-short` - Run only short tests (fast)
+- `make test-coverage` - Generate HTML coverage report
+
+#### Code Quality
+- `make lint` - Run golangci-lint with project configuration
+- `make format` - Format code with gofmt and goimports
+
+#### Run Commands
+- `make run-cp` - Build and run control plane
+- `make run-dp` - Build and run data plane
+
+#### Docker Commands
+- `make docker-build` - Build all Docker images
+- `make docker-build-cp` - Build control plane image
+- `make docker-build-dp` - Build data plane image
+- `make docker-build-ctl` - Build CLI image
+
+#### Development Helpers
+- `make dev` - Setup development environment
+- `make deps` - Install development dependencies
+- `make clean` - Clean build artifacts
+- `make help` - Show all available commands
+- `make version` - Show version and build information
+- `make mod-tidy` - Tidy Go modules
+- `make mod-verify` - Verify Go modules
+
+#### Quick Development Workflow
+```bash
+# Setup development environment
+make deps dev
+
+# Build all binaries
+make build
+
+# Run tests and linting
+make test lint
+
+# Run control plane in development
+make run-cp
+
+# In another terminal, run data plane
+make run-dp
+```
 
 ## 🔄 Development Workflow
 
@@ -149,6 +210,7 @@ test(engine): add unit tests for rule compiler
 3. **Run Linting**: Fix any linting issues
    ```bash
    make lint
+   make format
    ```
 
 4. **Update Documentation**: Update relevant docs if needed
